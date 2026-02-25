@@ -1,0 +1,535 @@
+---
+title: "Data Analysis Project"
+author: "Karen Adjoa Selasi Koomson"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(lubridate)
+library(reshape2)
+library(knitr)
+
+```
+
+
+
+## 1. Introduction
+
+The consulting company seeks to understand the factors that contribute to Airbnb rental prices in Los Angeles. Specifically, the goal of this project is to identify which property characteristics allow hosts to charge higher prices.
+
+The dataset consists of 45,533 Airbnb listings in Los Angeles as of September 4, 2024, sourced from Inside Airbnb. The dataset includes listing-level information such as neighborhood, room type, number of bedrooms, review scores, availability, and amenities.
+
+This analysis addresses the following big questions:
+
+Does room_type affect price?
+Does property_type affect price?
+Do neighbourhoods affect price?
+Does the number of accommodates (guests) affect price?
+Does being a superhost (host_is_superhost) affect price?
+Do review_scores_rating and number_of_reviews correlate with price?
+
+The remainder of the report presents the data, methods, results, and conclusions derived from exploratory data analysis.
+
+## 2. Data and Models
+```{r overview, include=FALSE}
+
+# LOADING DATA 
+
+Airbnb <- read.csv("C:/Users/LENOVO/Documents/Listings.csv", stringsAsFactors = FALSE)
+
+# QUICK OVERVIEW
+head(Airbnb)     
+dim(Airbnb)       
+str(Airbnb)       
+summary(Airbnb)  
+
+# CLEANING DATA
+
+Airbnb <- Airbnb %>%
+  mutate(
+    host_since = dmy(host_since, quiet = TRUE),        # Convert valid dates
+    host_since = if_else(is.na(host_since), NA_Date_, host_since), # Keep NAs
+    host_response_rate = as.numeric(host_response_rate),            # "0.96" -> numeric
+    host_is_superhost = host_is_superhost == "t",                   # "t"/"f" -> TRUE/FALSE
+    instant_bookable = instant_bookable == "t",
+    room_type = as.factor(room_type),
+    property_type = as.factor(property_type),
+    neighbourhood_cleansed = as.factor(neighbourhood_cleansed),
+    neighbourhood_group_cleansed = as.factor(neighbourhood_group_cleansed)
+  )
+```
+### 2.1 Data
+
+The dataset consists of 45,533 Airbnb listings in Los Angeles and 25 variables describing listing characteristics, host information, geographic location, and pricing.
+
+Before analysis, the data were cleaned and reformatted to ensure consistency. Date variables were converted to proper date format, response rates were converted to numeric values, and binary indicators such as superhost status and instant bookable were converted to logical variables. Categorical variables including room type, property type, and neighborhood were converted to factors to facilitate grouping and summary analysis. Missing values were retained where appropriate.
+
+These preparation steps ensured that the dataset was suitable for exploratory data analysis.
+
+
+
+### Question 1: Does Room Type Affect Price?
+Rationale: Entire homes, private rooms, and shared rooms likely have different price ranges.
+
+Data: 
+The dataset contains 45,533 Airbnb listings in Los Angeles with the following relevant variables:
+price – listing price in USD
+room_type – type of room: Entire home/apt, Private room, Shared room, Hotel room
+Other variables exist, but for this question we are focusing on price and room_type.
+
+Method:
+To determine whether room type influences Airbnb pricing, we compared listing prices across the four room categories: Entire home/apt, Private room, Shared room, and Hotel room.
+
+Listings with missing or zero prices were removed. Extreme price outliers above $2,000 were excluded to prevent distortion of summary statistics and visualizations. The room_type variable was treated as a categorical factor.
+
+We calculated summary statistics (mean, median, standard deviation, and listing count) for each room type and created a boxplot to compare price distributions.
+
+Analysis and Results: 
+```{r cars}
+
+# Clean data for this question
+Airbnb_clean1 <- Airbnb %>%
+  filter(!is.na(price), price > 0, price <= 2000) %>%
+  mutate(room_type = as.factor(room_type))
+
+# Summary table
+price_by_room <- Airbnb_clean1 %>%
+  group_by(room_type) %>%
+  summarise(
+    n_listings = n(),
+    avg_price = mean(price, na.rm=TRUE),
+    median_price = median(price, na.rm=TRUE),
+    sd_price = sd(price, na.rm=TRUE)
+  )
+
+kable(price_by_room, 
+      caption = "Summary of Airbnb Prices by Room Type",
+      digits = 0)
+
+# Boxplot
+ggplot(Airbnb_clean1, aes(x = room_type, y = price, fill = room_type)) +
+  geom_boxplot() +
+  scale_y_continuous(limits=c(0,1000)) +
+  labs(title="Price Distribution by Room Type", x="Room Type", y="Price (USD)") +
+  theme_minimal()
+
+```
+Answer:
+
+The summary table shows that Entire home/apt listings are the most common with 28,302 listings, and have an average price of $270 and a median price of $184, with a standard deviation of $268. Hotel rooms, while much less common (111 listings), have the highest average price at $587, though the median price is $346, indicating that a few very expensive hotel listings are skewing the average. Private rooms are significantly cheaper, with an average price of $95 and a median of $69, while shared rooms are the least expensive, averaging $49 with a median of $30.
+
+The boxplot further confirms these patterns, showing that Entire home/apt listings generally command higher prices than private or shared rooms, while hotel rooms, though rare, can be very expensive.
+
+Conclusion:
+Room type is a significant factor influencing Airbnb prices in Los Angeles. Entire homes and apartments consistently command higher prices compared to private and shared rooms, while hotel rooms, though rare, have the highest potential prices. This analysis highlights the importance of room type as a key determinant of rental price.
+
+
+### Question 2: Does Property Type Affect Airbnb Price?
+
+Data:
+For this analysis, we examine the property_type variable, which indicates the type of listing such as Entire condo, Entire home, Private room in home, and other property types. The price variable remains the focus, measured in USD. As before, listings with missing or zero prices, as well as extreme outliers above $2,000, were excluded to maintain a consistent and meaningful analysis.
+
+Methods:
+We grouped the listings by property_type and calculated summary statistics for each group, including the number of listings, average price, median price, and standard deviation of price. This allows us to quantify how prices differ across property types. In addition, a bar chart was created to visualize the average price for each property type, helping to identify which types of properties command higher prices.
+
+Analysis and Results:
+```{r}
+# Summarize price by property_type
+price_by_property <- Airbnb_clean1 %>%
+  group_by(property_type) %>%
+  summarise(
+    n_listings = n(),
+    avg_price = mean(price, na.rm=TRUE),
+    median_price = median(price, na.rm=TRUE),
+    sd_price = sd(price, na.rm=TRUE)
+  ) %>%
+  arrange(desc(avg_price))
+
+kable(price_by_property, 
+      caption = "Top 20 Property Types by Average Price",
+      digits = 0)
+
+# Top 20 property types by average price
+top_property <- price_by_property %>%
+  slice_max(order_by = avg_price, n = 20)
+
+# Plot
+ggplot(top_property, aes(x = reorder(property_type, avg_price), y = avg_price)) +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  coord_flip() +
+  labs(title = "Top 20 Property Types by Average Price", y = "Average Price (USD)", x = "Property Type") +
+  theme_minimal()
+```
+Answer : 
+
+The bar chart of the top 20 property types by average price shows that property type strongly influences Airbnb pricing in Los Angeles. The most expensive listings are luxury or unique properties, including Entire villas, Castles, Entire resorts, and high-end Entire homes, with average prices well above $700 per night.
+
+Mid-range listings, such as Entire homes, Entire condos, and Entire guesthouses, tend to have average prices between $150–$400 per night. These represent the bulk of the market and offer typical accommodations for guests.
+
+Cheaper options, including most private rooms and shared rooms, are priced between roughly $35–$150 per night, reflecting smaller spaces, lower privacy, or more basic amenities.
+
+Overall, the chart demonstrates a clear pricing hierarchy by property type: luxury and entire properties command premium prices, while smaller or shared accommodations are more affordable. The top 20 visualization highlights the categories that most strongly influence pricing without overwhelming the reader with all 96 property types.
+
+
+### Question 3: Do neighborhoods affect Airbnb price?
+
+Data
+Relevant variables for this question:
+price – listing price in USD
+neighbourhood_cleansed – the cleaned neighborhood name where the listing is located
+
+The goal is to examine how Airbnb prices vary across different neighborhoods in Los Angeles.
+
+Methods
+Data Cleaning:
+Exclude listings with missing or zero prices.
+Remove extreme price outliers (above $2,000) to focus on typical pricing.
+Convert neighbourhood_cleansed to a factor for grouping.
+
+Summarization:
+Group listings by neighbourhood_cleansed and calculate:
+Number of listings (n_listings)
+Average price (avg_price)
+Median price (median_price)
+
+Visualization:
+Use a bar chart of average price by neighborhood.
+Display only the top 20 neighborhoods with the highest average prices.
+Flip the x-axis (coord_flip) for readability.
+
+Analysis and Results:
+```{r}
+# Summarize price by neighborhood
+price_by_neighborhood <- Airbnb_clean1 %>%
+  group_by(neighbourhood_cleansed) %>%
+  summarise(
+    n_listings = n(),
+    avg_price = mean(price, na.rm=TRUE),
+    median_price = median(price, na.rm=TRUE)
+  ) %>%
+  arrange(desc(avg_price))
+
+# Display top 20 neighborhoods by average price
+top_neighborhoods <- price_by_neighborhood[1:20, ]
+
+kable(top_neighborhoods, 
+      caption = "Top 20 Neighborhoods by Average Price",
+      digits = 0)
+
+# Bar chart of top 20 neighborhoods by average price
+ggplot(top_neighborhoods, aes(x=reorder(neighbourhood_cleansed, avg_price), y=avg_price)) +
+  geom_bar(stat="identity", fill="orange") +
+  coord_flip() +
+  labs(title="Top 20 Neighborhoods by Average Airbnb Price", y="Average Price (USD)", x="Neighborhood") +
+  theme_minimal()
+```
+Answer: 
+
+Neighborhood is definitely a major factor in Airbnb pricing. I looked at average prices by neighborhood, using the same cleaned dataset with listings under $2,000. Then I grouped by neighbourhood_cleansed and calculated the average and median prices.
+
+The results make a lot of sense. The priciest neighborhoods are Bel-Air and Beverly Crest, averaging $872 and $837 per night. Malibu and Hollywood Hills West are also very expensive at $769 and $725. Other upscale areas like Pacific Palisades and the Santa Monica Mountains still have high averages, $530–$597. Even neighborhoods with fewer listings, like Green Valley and Sepulveda Basin, can have high prices, which shows that exclusivity matters. Basically, location is one of the strongest drivers of price — the nicer the neighborhood, the more you can charge.
+
+
+### Question 4: Does the number of guests (accommodates) affect Airbnb price?
+
+Data:
+For this analysis, I use the price and accommodates columns from the Airbnb Los Angeles dataset. The goal is to examine whether listings that can host more guests tend to command higher prices.
+
+Methods:
+I first filtered the dataset to remove listings with missing or zero prices and excluded extreme outliers above $2,000. The accommodates variable was treated as numeric. To explore the relationship between the number of guests and price, i calculated the average price for each value of accommodates. A line plot was then created to visualize the trend of average price as the number of accommodated guests increases.
+
+Analysis and Results:
+
+```{r}
+# Summarize average price by number of guests accommodated
+price_by_accommodates <- Airbnb_clean1 %>%
+  group_by(accommodates) %>%
+  summarise(
+    n_listings = n(),
+    avg_price = mean(price, na.rm = TRUE),
+    median_price = median(price, na.rm = TRUE)
+  )
+
+
+kable(price_by_accommodates,
+      caption = "Average Price by Number of Guests Accommodated",
+      digits = 0)
+
+# Line plot
+ggplot(price_by_accommodates, aes(x = accommodates, y = avg_price)) +
+  geom_line(color = "blue") +
+  geom_point() +
+  labs(title = "Average Airbnb Price by Number of Guests",
+       x = "Number of Guests (Accommodates)",
+       y = "Average Price (USD)") +
+  theme_minimal()
+```
+
+Answer: 
+The analysis shows a clear positive relationship between the number of guests a listing can accommodate and its price. Listings for 1–2 guests have average prices below $150, while listings accommodating 6–8 guests average $330–$490. Large listings for 10–16 guests show even higher average prices, with some exceeding $750. Median prices follow a similar trend, confirming that higher-capacity listings typically command higher nightly rates.
+
+Conclusion: The number of guests is a significant determinant of Airbnb price. Larger listings, which accommodate more guests, consistently achieve higher average prices.
+
+
+### Question 5: Does being a superhost affect Airbnb price?
+
+Data
+For this analysis, we focus on the price and host_is_superhost columns in the Airbnb Los Angeles dataset. The goal is to investigate whether listings hosted by superhosts tend to charge higher prices compared to those hosted by regular hosts.
+
+Method
+The dataset was filtered to remove listings with missing or zero prices and extreme outliers above $2,000. The host_is_superhost column, which contains "t" for true and "f" for false, was converted to a logical variable (TRUE/FALSE). We then summarized average, median, and standard deviation of prices for superhosts versus non-superhosts. A boxplot was also generated to visualize the distribution of prices between the two groups.
+
+Analysis and Results:
+```{r}
+# Summarize price by superhost status
+price_by_superhost <- Airbnb_clean1 %>%
+  group_by(host_is_superhost) %>%
+  summarise(
+    n_listings = n(),
+    avg_price = mean(price, na.rm = TRUE),
+    median_price = median(price, na.rm = TRUE),
+    sd_price = sd(price, na.rm = TRUE)
+  )
+
+kable(price_by_superhost,
+      caption = "Airbnb Prices by Superhost Status",
+      digits = 0)
+
+# Boxplot
+ggplot(Airbnb_clean1, aes(x = host_is_superhost, y = price, fill = host_is_superhost)) +
+  geom_boxplot() +
+  scale_y_continuous(limits = c(0, 1000)) +
+  labs(title = "Price Distribution by Superhost Status",
+       x = "Superhost",
+       y = "Price (USD)") +
+  theme_minimal()
+```
+
+Answer: 
+
+Out of the dataset 15,579 are hosted by superhosts and 21,205 by non-superhosts. Focusing on price, we see that listings by superhosts have a slightly higher average price of $233.39 compared to $228.38 for non-superhosts. Median prices follow a similar pattern: $160 for superhosts versus $150 for non-superhosts. The standard deviation indicates that both groups have substantial variability, though superhost listings show a slightly lower spread (SD = 243.76) compared to non-superhosts (SD = 259.86), suggesting that while most superhost listings cluster around higher prices, non-superhost listings include more extreme values.
+
+The boxplot of price by superhost status confirms that superhost listings tend to be priced higher overall, with the median and upper quartile elevated relative to non-superhosts. While the difference is modest, it is consistent, indicating that superhost status is positively associated with price.
+
+Conclusion: Listings managed by superhosts command higher prices than those by non-superhosts, demonstrating that trust and reliability perceived by guests can justify a pricing premium. This insight can guide hosts in understanding the value of superhost certification when setting their nightly rates.
+
+
+### Question 6: Do review scores and number of reviews correlate with Airbnb price?
+
+Data
+For this analysis, we use three variables from the Airbnb dataset:
+price – listing price in USD
+review_scores_rating – average rating of the listing (1–5 scale)
+number_of_reviews – total reviews received
+
+The goal is to determine whether listings with higher review scores or more reviews tend to command higher prices.
+
+Methods
+We first filtered the dataset to remove listings with missing or zero prices, missing review scores, and extreme price outliers above $2,000. For the analysis, we calculated:
+
+Correlation between review_scores_rating and price to quantify the relationship.
+Correlation between number_of_reviews and price.
+
+We also created scatter plots to visualize the relationships, including a log transformation of number of reviews to reduce skew in the plot.
+
+Analysis and Results:
+```{r}
+# Filter data for valid review scores
+reviews_data <- Airbnb_clean1 %>%
+  filter(!is.na(review_scores_rating), !is.na(number_of_reviews))
+
+# Correlations
+cor_price_rating <- cor(reviews_data$price, reviews_data$review_scores_rating, use="complete.obs")
+cor_price_reviews <- cor(reviews_data$price, reviews_data$number_of_reviews, use="complete.obs")
+
+cor_price_rating
+cor_price_reviews
+
+# Scatter plot: review score vs price
+ggplot(reviews_data, aes(x = review_scores_rating, y = price)) +
+  geom_point(alpha = 0.3, color = "green") +
+  scale_y_continuous(limits = c(0, 1000)) +
+  labs(title = "Review Score Rating vs Price", x = "Review Score Rating", y = "Price (USD)") +
+  theme_minimal()
+
+# Scatter plot: number of reviews vs price (log scale)
+ggplot(reviews_data, aes(x = number_of_reviews + 1, y = price)) +
+  geom_point(alpha = 0.3, color = "purple") +
+  scale_x_log10() +
+  scale_y_continuous(limits = c(0, 1000)) +
+  labs(title = "Number of Reviews vs Price (log scale)", x = "Number of Reviews (log scale)", y = "Price (USD)") +
+  theme_minimal()
+```
+Answer: 
+
+The correlation between price and review scores is 0.06, indicating a very weak positive relationship. This suggests that listings with slightly higher ratings tend to have marginally higher prices, but the effect is minimal. Conversely, the correlation between price and number of reviews is -0.067, a very weak negative relationship, indicating that listings with more reviews do not necessarily have higher prices and in fact show a slight tendency to have lower prices.
+
+Scatter plots reinforce these findings. Prices are highly variable across all review scores, and the number of reviews spans a wide range with no clear trend toward higher prices. While highly-rated listings can be expensive, many expensive listings have only a few reviews, and popular listings with many reviews may still have moderate pricing.
+
+Conclusion: Review scores and number of reviews have minimal influence on Airbnb price in Los Angeles. While they may reflect quality and popularity, other factors such as room type, property type, neighborhood, and accommodates have much stronger impacts on pricing.
+
+
+
+
+## 3. Discussion and Analysis
+
+The exploratory analysis of Airbnb listings in Los Angeles reveals several factors that strongly influence rental prices. Across six key questions, we examined the impact of room type, property type, neighborhood, accommodates, superhost status, and review metrics.
+
+Room type is a major determinant of price. Entire homes and apartments consistently command higher rates than private or shared rooms. Hotel rooms, though rare, are the most expensive on average, reflecting premium offerings. This indicates that guests are willing to pay more for privacy and full-unit accommodations.
+
+Property type further explains price differences. Luxury or unique properties, such as villas and guest suites, achieve higher prices compared to standard apartments or houses. While most listings are apartments and houses with moderate pricing, premium properties create significant variability in the market.
+
+Neighborhood location is another critical factor. High-end neighborhoods like Bel-Air, Beverly Crest, Malibu, and Hollywood Hills West have the highest average prices, often exceeding $700 per night. In contrast, less exclusive neighborhoods tend to have substantially lower prices. This demonstrates that location strongly drives pricing, reflecting both prestige and demand.
+
+The number of guests a listing accommodates also has a substantial impact. Larger listings, designed for six or more guests, consistently command higher prices, with the highest-capacity properties sometimes exceeding $750 per night. This trend reflects the additional space and amenities required for larger groups.
+
+Superhost status provides a modest premium. Listings managed by superhosts average around $233 per night, slightly higher than $228 for non-superhosts. While the difference is small, it suggests that reliability and reputation are valued by guests and can justify a minor price increase.
+
+Finally, review scores and number of reviews have minimal impact on price. Correlations between price and review score (0.06) and between price and number of reviews (-0.067) are very weak. Although high review scores or many reviews may reflect quality or popularity, they are not primary drivers of price.
+
+In summary, room type, property type, neighborhood, and accommodates are the strongest factors affecting Airbnb prices in Los Angeles. Superhost status offers a small additional premium, while review metrics have little influence. Hosts and clients seeking to optimize pricing should focus on upgrading property type, targeting premium neighborhoods, and accommodating larger groups to maximize revenue.
+
+
+## 4. Conclusions
+
+The analysis of Airbnb listings in Los Angeles demonstrates that several key factors significantly influence rental prices. Room type, property type, neighborhood, and the number of guests accommodated emerge as the strongest drivers of pricing. Entire homes and apartments command higher prices than private or shared rooms, while luxury or unique properties, such as villas or guest suites, achieve premium rates. Location plays a critical role, with high-end neighborhoods like Bel-Air, Beverly Crest, Malibu, and Hollywood Hills West consistently commanding the highest average nightly rates. Similarly, listings designed to accommodate larger groups naturally command higher prices, reflecting the added value of space and amenities.
+
+Superhost status offers a modest pricing advantage, with superhost-managed listings showing slightly higher average and median prices than those managed by non-superhosts. In contrast, review scores and number of reviews have minimal impact on price, indicating that while quality and popularity are important to guests, they do not strongly determine pricing.
+
+Overall, the findings suggest that Airbnb hosts and property managers can maximize revenue by focusing on upgrading their property type, targeting premium neighborhoods, and accommodating larger groups. Superhost status provides a small additional premium, but other factors, particularly location and property features, are far more influential.
+
+These insights provide a clear roadmap for clients looking to understand the drivers of Airbnb pricing and make data-informed decisions about listing strategies and pricing optimization. Future analyses could explore interactions between factors, seasonal price variation, or additional amenities to further refine pricing strategies.
+
+
+## 5. Appendix
+
+### Summary Tables
+
+#### 1. Room Type Summary
+```{r, echo=FALSE}
+room_type_summary <- Airbnb_clean1 %>%
+  group_by(room_type) %>%
+  summarise(
+    n_listings = n(),
+    avg_price = round(mean(price), 0),
+    median_price = median(price),
+    sd_price = round(sd(price), 0)
+  )
+
+kable(room_type_summary, caption = "Airbnb Price Summary by Room Type")
+```
+#### 2. Top 20 Neighborhoods by Average Price 
+```{r, echo=FALSE}
+neighborhood_summary <- Airbnb_clean1 %>%
+  group_by(neighbourhood_cleansed) %>%
+  summarise(
+    n_listings = n(),
+    avg_price = round(mean(price), 0)
+  ) %>%
+  arrange(desc(avg_price)) %>%
+  slice_head(n = 20)
+
+kable(neighborhood_summary, caption = "Top 20 Neighborhoods by Average Airbnb Price")
+```
+
+#### 3. Accommodates vs Price
+```{r, echo=FALSE}
+accommodates_summary <- Airbnb_clean1 %>%
+  group_by(accommodates) %>%
+  summarise(
+    n_listings = n(),
+    avg_price = round(mean(price), 0),
+    median_price = median(price)
+  )
+
+kable(accommodates_summary, caption = "Airbnb Price by Number of Guests Accommodated")
+```
+
+#### 4. Superhost vs Price 
+```{r, echo=FALSE}
+superhost_summary <- Airbnb_clean1 %>%
+  group_by(host_is_superhost) %>%
+  summarise(
+    n_listings = n(),
+    avg_price = round(mean(price), 0),
+    median_price = median(price),
+    sd_price = round(sd(price), 0)
+  )
+
+kable(superhost_summary, caption = "Airbnb Price Summary by Superhost Status")
+```
+
+#### 5. Correlations for Reviews
+```{r, echo=FALSE}
+reviews_correlation <- data.frame(
+  Metric = c("Review Score Rating", "Number of Reviews"),
+  Correlation_with_Price = c(
+    cor(Airbnb_clean1$price, Airbnb_clean1$review_scores_rating, use="complete.obs"),
+    cor(Airbnb_clean1$price, Airbnb_clean1$number_of_reviews, use="complete.obs")
+  )
+)
+
+kable(reviews_correlation, digits = 3, caption = "Correlation Between Price and Review Metrics")
+```
+
+### 5. Key R Commands Used
+
+#### Load data
+Airbnb <- read.csv("Airbnb Los Angeles Listings.csv")
+
+#### Clean data (remove NAs and outliers)
+Airbnb_clean <- Airbnb %>%
+  filter(!is.na(price) & price > 0 & price <= 2000)
+
+#### Summarize room type
+Airbnb_clean %>%
+  group_by(room_type) %>%
+  summarise(n_listings = n(),
+            avg_price = mean(price),
+            median_price = median(price),
+            sd_price = sd(price))
+
+#### Summarize neighborhood
+Airbnb_clean %>%
+  group_by(neighbourhood_cleansed) %>%
+  summarise(n_listings = n(),
+            avg_price = mean(price)) %>%
+  arrange(desc(avg_price))
+
+#### Summarize accommodates
+Airbnb_clean %>%
+  group_by(accommodates) %>%
+  summarise(n_listings = n(),
+            avg_price = mean(price),
+            median_price = median(price))
+
+#### Summarize superhost
+Airbnb_clean %>%
+  group_by(host_is_superhost) %>%
+  summarise(n_listings = n(),
+            avg_price = mean(price),
+            median_price = median(price),
+            sd_price = sd(price))
+
+#### Correlations
+cor(Airbnb_clean$price, Airbnb_clean$review_scores_rating, use="complete.obs")
+cor(Airbnb_clean$price, Airbnb_clean$number_of_reviews, use="complete.obs")
+
+## 6. Example Plots Included in Report
+
+1. Average Price by Room Type – bar chart highlighting Entire home/apt as most expensive common type.
+
+2. Top 20 Neighborhoods by Average Price – bar chart showing premium neighborhoods like Bel-Air and Beverly Crest.
+
+3. Accommodates vs Price – line plot showing increasing price with number of guests.
+
+4. Superhost vs Price – boxplot showing slightly higher median for superhosts.
+
+5. Review Score vs Price – scatter plot showing very weak positive correlation.
+
+6. Number of Reviews vs Price – scatter plot (log scale) showing minimal effect.
